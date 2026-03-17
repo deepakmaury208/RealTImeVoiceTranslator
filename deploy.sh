@@ -3,7 +3,7 @@
 
 echo "=========================================="
 echo " Real-Time Voice Translator"
-echo " Railway.app Deployment Helper"
+echo " Railway.app Deployment Helper" 
 echo "=========================================="
 echo ""
 
