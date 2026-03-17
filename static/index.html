@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Voice Translator</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎤 Real-Time Voice Translator</h1>
+            <p>Translate speech in real-time across multiple languages</p>
+        </header>
+
+        <main>
+            <div class="language-selector">
+                <div class="language-group">
+                    <label for="source-lang">Source Language:</label>
+                    <select id="source-lang">
+                        <option value="en">English</option>
+                        <option value="es">Spanish</option>
+                        <option value="fr">French</option>
+                        <option value="de">German</option>
+                    </select>
+                </div>
+
+                <div class="swap-button">
+                    <button onclick="swapLanguages()">⇄</button>
+                </div>
+
+                <div class="language-group">
+                    <label for="target-lang">Target Language:</label>
+                    <select id="target-lang">
+                        <option value="es">Spanish</option>
+                        <option value="en">English</option>
+                        <option value="fr">French</option>
+                        <option value="de">German</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="translation-area">
+                <div class="streaming-section">
+                    <h3>🚀 Real-Time Streaming Mode</h3>
+                    <p style="color: #666; font-size: 0.9em;">Microphone → Whisper → NLLB → Coqui TTS</p>
+                    <div class="button-group">
+                        <button id="stream-btn" onclick="startStreamingMode()" class="btn btn-success">
+                            ▶ Start Streaming
+                        </button>
+                        <button id="stop-stream-btn" onclick="stopStreamingMode()" class="btn btn-danger" disabled>
+                            ⏹ Stop Streaming
+                        </button>
+                    </div>
+                    <div id="stream-status" class="status-box" style="display:none; background: #f0f7ff; padding: 15px; border-radius: 5px; margin-top: 10px;">
+                        <div style="font-size: 0.9em; line-height: 1.6;">
+                            <div><strong>Transcription:</strong> <span id="stream-transcription" style="color: #333;">—</span></div>
+                            <div><strong>Translation:</strong> <span id="stream-translation" style="color: #333;">—</span></div>
+                            <div><strong>Status:</strong> <span id="stream-state" style="color: #666;">Ready</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <hr style="margin: 30px 0; border: none; border-top: 2px solid #ddd;">
+
+                <div class="input-section">
+                    <h3>Manual Mode (Traditional)</h3>
+                    <h4>Source Text</h4>
+                    <textarea id="source-text" placeholder="Speak or type here..."></textarea>
+                    <div class="button-group">
+                        <button id="record-btn" onclick="handleRecordClick()" class="btn btn-primary">
+                            🎤 Start Recording
+                        </button>
+                        <button id="stop-btn" onclick="stopRecording()" class="btn btn-danger" disabled>
+                            ⏹ Stop Recording
+                        </button>
+                        <button id="clear-btn" onclick="clearText('source-text')" class="btn btn-secondary">
+                            Clear
+                        </button>
+                    </div>
+                    <div class="help-text">
+                        <small>💡 <strong>Microphone Permission:</strong> Click "Start Recording" to grant microphone access. If blocked, click the microphone icon 🔇 in your browser's address bar and allow access.</small>
+                    </div>
+                </div>
+
+                <div class="output-section">
+                    <h3>Translated Text</h3>
+                    <textarea id="target-text" placeholder="Translation will appear here..." readonly></textarea>
+                    <div class="button-group">
+                        <button id="translate-btn" onclick="translateText()" class="btn btn-primary" title="Automatically runs when text changes or after recording">
+                            🔄 Translate (auto)
+                        </button>
+                        <button id="speak-btn" onclick="speakTranslation()" class="btn btn-secondary">
+                            🔊 Speak Translation
+                        </button>
+                        <button id="copy-btn" onclick="copyToClipboard('target-text')" class="btn btn-secondary">
+                            📋 Copy
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="status-area">
+                <div id="status" class="status-message">Ready</div>
+                <div id="error" class="error-message"></div>
+            </div>
+        </main>
+
+        <footer>
+            <p>Real-Time Voice Translator v1.0 | Powered by FastAPI</p>
+        </footer>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>
