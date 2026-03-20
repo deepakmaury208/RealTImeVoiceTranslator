@@ -39,7 +39,7 @@ async def websocket_stream(websocket: WebSocket):
                     import base64
                     audio_data = base64.b64decode(message.get("data", ""))
                     
-                    # Save temp file
+                    # Save each chunk to its own file so we don't keep re-processing older audio
                     temp_wav = f"temp_stream_{datetime.now().timestamp()}.wav"
                     with open(temp_wav, "wb") as f:
                         f.write(audio_data)

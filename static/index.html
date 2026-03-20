@@ -85,6 +85,12 @@
 
                 <div class="output-section">
                     <h3>Translated Text</h3>
+                    <div class="auto-speak-toggle" style="margin-bottom: 10px;">
+                        <label>
+                            <input type="checkbox" id="auto-speak" checked>
+                            Automatically speak translation
+                        </label>
+                    </div>
                     <textarea id="target-text" placeholder="Translation will appear here..." readonly></textarea>
                     <div class="button-group">
                         <button id="translate-btn" onclick="translateText()" class="btn btn-primary" title="Automatically runs when text changes or after recording">

@@ -5,6 +5,7 @@ let isRecording = false;
 let stream = null;
 let audioContext = null;
 let processor = null;
+let lastStreamTranslation = '';
 
 // Initialize app
 document.addEventListener('DOMContentLoaded', () => {
@@ -307,6 +308,12 @@ async function translateText() {
             const result = await response.json();
             document.getElementById('target-text').value = result.translated;
             showStatus(`Translation complete: "${result.translated}"`);
+
+            // Automatically speak translation if enabled
+            const autoSpeakElem = document.getElementById('auto-speak');
+            if (autoSpeakElem && autoSpeakElem.checked) {
+                speakTranslation();
+            }
         } else {
             const error = await response.json();
             showError(`Translation failed: ${error.detail}`);
@@ -329,6 +336,11 @@ function speakTranslation() {
     try {
         showStatus('Speaking translation... 🔊');
         clearError();
+
+        // Cancel any currently speaking text to avoid overlap/repetition
+        if (window.speechSynthesis.speaking) {
+            window.speechSynthesis.cancel();
+        }
 
         const utterance = new SpeechSynthesisUtterance(translatedText);
         
@@ -463,6 +475,16 @@ if (sourceArea) {
     });
 }
 
+// Auto-translate when languages change
+const sourceLangSelect = document.getElementById('source-lang');
+const targetLangSelect = document.getElementById('target-lang');
+const translateOnLanguageChange = () => {
+    const txt = sourceArea?.value.trim();
+    if (txt) translateText();
+};
+if (sourceLangSelect) sourceLangSelect.addEventListener('change', translateOnLanguageChange);
+if (targetLangSelect) targetLangSelect.addEventListener('change', translateOnLanguageChange);
+
 // ============ WebSocket Streaming Mode ============
 
 let streamSocket = null;
@@ -523,8 +545,17 @@ async function startStreamingMode() {
             } else if (message.type === 'translation') {
                 document.getElementById('stream-translation').textContent = message.text;
                 document.getElementById('target-text').value = message.text;
+
+                const autoSpeakElem = document.getElementById('auto-speak');
+                if (autoSpeakElem && autoSpeakElem.checked && message.text && message.text !== lastStreamTranslation) {
+                    speakTranslation();
+                }
+                lastStreamTranslation = message.text;
             } else if (message.type === 'audio') {
-                playStreamAudio(message.data);
+                const autoSpeakElem = document.getElementById('auto-speak');
+                if (!autoSpeakElem || !autoSpeakElem.checked) {
+                    playStreamAudio(message.data);
+                }
             } else if (message.type === 'error') {
                 showError(message.message);
                 updateStreamStatus('Error: ' + message.message);
@@ -565,8 +596,8 @@ function initStreamRecording(stream) {
         }
     };
     
-    // Send audio chunks every 1 second
-    streamMediaRecorder.start(1000);
+    // Send audio chunks every 3 seconds (larger chunks improve transcription stability)
+    streamMediaRecorder.start(3000);
 }
 
 function updateStreamStatus(message) {

@@ -38,15 +38,24 @@ DEFAULT_TARGET_LANGUAGE = "es"
 # NLLB model configuration (Meta's No Language Left Behind)
 NLLB_MODEL_NAME = os.getenv("NLLB_MODEL_NAME", "facebook/nllb-200-distilled-600M")
 
-# Whisper configuration
-WHISPER_MODEL = os.getenv("WHISPER_MODEL", "base")  # tiny, base, small, medium, large
+# Whisper configuration - improved for accuracy
+WHISPER_MODEL = os.getenv("WHISPER_MODEL", "medium")  # Changed from "base" to "medium" for better accuracy
+WHISPER_DEVICE = os.getenv("WHISPER_DEVICE", "cpu")  # cpu/cuda
+WHISPER_LANGUAGE = os.getenv("WHISPER_LANGUAGE", None)  # Auto-detect if None
 
-# Coqui TTS configuration
-COQUI_TTS_MODEL = os.getenv("COQUI_TTS_MODEL", "tts_models/en/ljspeech/tacotron2-DDC")
+# Audio processing settings - optimized for latency
+AUDIO_CHUNK_DURATION = 2.0  # seconds - reduced from 3 for lower latency
+AUDIO_OVERLAP = 0.5  # seconds - overlap between chunks for continuity
+AUDIO_MIN_CONFIDENCE = 0.7  # minimum confidence threshold
+
+# Translation settings - improved accuracy
+TRANSLATION_CACHE_SIZE = 1000  # Cache translations to reduce API calls
+TRANSLATION_TIMEOUT = 3.0  # seconds - faster timeout
 
 # TTS (Text-to-Speech) settings
 TTS_ENGINE = "pyttsx3"  # Options: pyttsx3, google
 TTS_RATE = 150  # Speech rate (words per minute)
+COQUI_TTS_MODEL = "tts_models/en/ljspeech/vits"
 
 # Supported languages
 SUPPORTED_LANGUAGES = {
