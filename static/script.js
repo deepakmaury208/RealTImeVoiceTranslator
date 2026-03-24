@@ -543,14 +543,17 @@ async function startStreamingMode() {
                 document.getElementById('stream-transcription').textContent = message.text;
                 document.getElementById('source-text').value = message.text;
             } else if (message.type === 'translation') {
-                document.getElementById('stream-translation').textContent = message.text;
-                document.getElementById('target-text').value = message.text;
+                const translationText = message.text || '';
+                document.getElementById('stream-translation').textContent = translationText;
+                document.getElementById('target-text').value = translationText;
+
+                updateStreamStatus('Live translation updating...');
 
                 const autoSpeakElem = document.getElementById('auto-speak');
-                if (autoSpeakElem && autoSpeakElem.checked && message.text && message.text !== lastStreamTranslation) {
+                if (autoSpeakElem && autoSpeakElem.checked && translationText && translationText !== lastStreamTranslation) {
                     speakTranslation();
                 }
-                lastStreamTranslation = message.text;
+                lastStreamTranslation = translationText;
             } else if (message.type === 'audio') {
                 const autoSpeakElem = document.getElementById('auto-speak');
                 if (!autoSpeakElem || !autoSpeakElem.checked) {
@@ -596,8 +599,8 @@ function initStreamRecording(stream) {
         }
     };
     
-    // Send audio chunks every 3 seconds (larger chunks improve transcription stability)
-    streamMediaRecorder.start(3000);
+    // Send audio chunks every 1.2 seconds (smaller chunks for faster live translation)
+    streamMediaRecorder.start(1200);
 }
 
 function updateStreamStatus(message) {

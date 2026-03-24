@@ -44,9 +44,9 @@ WHISPER_DEVICE = os.getenv("WHISPER_DEVICE", "cpu")  # cpu/cuda
 WHISPER_LANGUAGE = os.getenv("WHISPER_LANGUAGE", None)  # Auto-detect if None
 
 # Audio processing settings - optimized for latency
-AUDIO_CHUNK_DURATION = 2.0  # seconds - reduced from 3 for lower latency
-AUDIO_OVERLAP = 0.5  # seconds - overlap between chunks for continuity
-AUDIO_MIN_CONFIDENCE = 0.7  # minimum confidence threshold
+AUDIO_CHUNK_DURATION = 1.5  # seconds - reduced from 3 for lower latency
+AUDIO_OVERLAP = 0.3  # seconds - overlap between chunks for continuity
+AUDIO_MIN_CONFIDENCE = 0.4  # minimum confidence threshold (lower for real-time conversational flow)
 
 # Translation settings - improved accuracy
 TRANSLATION_CACHE_SIZE = 1000  # Cache translations to reduce API calls
@@ -106,6 +106,12 @@ ALLOWED_AUDIO_FORMATS = ["wav", "mp3", "m4a", "ogg"]
 # WebSocket settings
 WS_TIMEOUT = 30  # seconds
 WS_HEARTBEAT_INTERVAL = 30  # seconds
+
+# Remote live model endpoints
+USE_REMOTE_MODE = os.getenv("USE_REMOTE_MODE", "False").lower() == "true"
+REMOTE_TRANSCRIBE_URL = os.getenv("REMOTE_TRANSCRIBE_URL", "")  # e.g. https://api.openai.com/v1/audio/transcriptions
+REMOTE_TRANSLATE_URL = os.getenv("REMOTE_TRANSLATE_URL", "")
+REMOTE_TTS_URL = os.getenv("REMOTE_TTS_URL", "")
 
 # Performance settings
 WORKER_THREADS = 4

@@ -163,38 +163,62 @@ def nllb_translate(text: str, src: str, tgt: str, model_name: str | None = None)
 async def perform_translation(text: str, source_lang: str, target_lang: str) -> dict:
     """Core translation logic used by both API and cache."""
     try:
-        source_text = text.lower().strip()
-        
-        # 1. Dictionary
+        source_text = (text or "").strip()
+
+        if not source_text:
+            return {"translated": "", "method": "none"}
+
+        # 1. NLLB first (preferred pipeline for speed/accuracy)
+        try:
+            translated = await asyncio.to_thread(nllb_translate, text, source_lang, target_lang)
+            if translated and translated.strip() and translated.strip().lower() != source_text.lower():
+                return {"translated": translated, "method": "nllb"}
+        except Exception as nllb_err:
+            logger.warning(f"NLLB translation failed: {nllb_err}")
+
+        # 2. Dictionary fallback for common phrases
         key = (source_lang, target_lang)
         if key in TRANSLATIONS:
             for phrase, translation in TRANSLATIONS[key].items():
-                if phrase in source_text:
+                if phrase in source_text.lower():
                     return {"translated": translation, "method": "dictionary"}
-        
-        # 2. Deep-Translator (Google backend)
-        if translator:
+
+        # 3. Remote translation (preferred when using remote mode)
+        if config.USE_REMOTE_MODE and config.REMOTE_TRANSLATE_URL:
             try:
-                t = translator(source=source_lang, target=target_lang)
-                translated = t.translate(text)
-                return {"translated": translated, "method": "google-translate"}
-            except: pass
+                resp = requests.post(
+                    config.REMOTE_TRANSLATE_URL,
+                    json={"text": text, "source_language": source_lang, "target_language": target_lang},
+                    timeout=10
+                )
+                resp.raise_for_status()
+                translated = resp.json().get("translated")
+                if translated:
+                    return {"translated": translated, "method": "remote-translate"}
+            except Exception as e:
+                logger.warning(f"Remote translate failed: {e}")
 
-        # 3. MyMemory
-        try:
-            params = {'q': text, 'langpair': f"{source_lang}|{target_lang}"}
-            resp = requests.get('https://api.mymemory.translated.net/get', params=params, timeout=5)
-            if resp.status_code == 200:
-                translated = resp.json().get('responseData', {}).get('translatedText')
-                if translated: return {"translated": translated, "method": "mymemory"}
-        except: pass
-        
-        # 4. NLLB
-        try:
-            translated = nllb_translate(text, source_lang, target_lang)
-            return {"translated": translated, "method": "nllb"}
-        except: pass
+        # 4. Optional online fallbacks only when Coqui TTS is not present
+        if CoquiTTS is None:
+            if translator:
+                try:
+                    t = translator(source=source_lang, target=target_lang)
+                    translated = t.translate(text)
+                    return {"translated": translated, "method": "google-translate"}
+                except Exception as google_err:
+                    logger.warning(f"Google translate failed: {google_err}")
 
+            try:
+                params = {'q': text, 'langpair': f"{source_lang}|{target_lang}"}
+                resp = requests.get('https://api.mymemory.translated.net/get', params=params, timeout=3)
+                if resp.status_code == 200:
+                    translated = resp.json().get('responseData', {}).get('translatedText')
+                    if translated:
+                        return {"translated": translated, "method": "mymemory"}
+            except Exception as mymemory_err:
+                logger.warning(f"MyMemory translate failed: {mymemory_err}")
+
+        # 4. Finally fallback to original text
         return {"translated": text, "method": "none"}
     except Exception as e:
         logger.error(f"Core translation error: {str(e)}")
@@ -254,7 +278,24 @@ def load_whisper(model_name: str | None = None):
 
 
 def transcribe_with_whisper(wav_path: str, language: str | None = None) -> dict:
-    """Transcribe audio with Whisper, with improved accuracy and confidence scoring."""
+    """Transcribe audio with Whisper (local) or remote server when remote mode enabled."""
+    if config.USE_REMOTE_MODE and config.REMOTE_TRANSCRIBE_URL:
+        try:
+            with open(wav_path, "rb") as audio_file:
+                files = {"file": audio_file}
+                data = {"language": language} if language else {}
+                resp = requests.post(config.REMOTE_TRANSCRIBE_URL, files=files, data=data, timeout=20)
+            resp.raise_for_status()
+            result = resp.json()
+            return {
+                "text": result.get("text", ""),
+                "confidence": float(result.get("confidence", 0.5)),
+                "language": result.get("language", language or "en")
+            }
+        except Exception as exc:
+            logger.warning(f"Remote transcription failed: {exc}")
+            # fallback to local whisper path if available
+
     try:
         model = load_whisper()
         audio_input = wav_path
@@ -329,15 +370,41 @@ def transcribe_with_whisper(wav_path: str, language: str | None = None) -> dict:
 
 
 def make_tts(text: str) -> str:
-    """Generate speech audio using Coqui TTS and return file path."""
+    """Generate speech audio and return wav file path."""
     global _tts_coqui
-    if CoquiTTS is None:
-        raise RuntimeError("Coqui TTS library is not installed")
-    if _tts_coqui is None:
-        _tts_coqui = CoquiTTS(model_name=config.COQUI_TTS_MODEL)
     out_file = f"tts_{datetime.now().timestamp()}.wav"
-    _tts_coqui.tts_to_file(text=text, file_path=out_file)
-    return out_file
+
+    if config.USE_REMOTE_MODE and config.REMOTE_TTS_URL:
+        try:
+            resp = requests.post(
+                config.REMOTE_TTS_URL,
+                json={"text": text},
+                timeout=20
+            )
+            resp.raise_for_status()
+            with open(out_file, "wb") as f:
+                f.write(resp.content)
+            return out_file
+        except Exception as e:
+            logger.warning(f"Remote TTS failed: {e}")
+
+    if CoquiTTS is not None:
+        # Preferred path: Coqui TTS
+        if _tts_coqui is None:
+            _tts_coqui = CoquiTTS(model_name=config.COQUI_TTS_MODEL)
+        _tts_coqui.tts_to_file(text=text, file_path=out_file)
+        return out_file
+
+    # Fallback: pyttsx3 local engine (Windows friendly) if Coqui is not available
+    try:
+        tts_engine = pyttsx3.init()
+        tts_engine.setProperty('rate', config.TTS_RATE)
+        tts_engine.save_to_file(text, out_file)
+        tts_engine.runAndWait()
+        return out_file
+    except Exception as e:
+        logger.warning(f"pyttsx3 fallback TTS failed: {e}")
+        raise
 
 # Initialize FastAPI app
 app = FastAPI(title="Real-Time Voice Translator")
@@ -445,41 +512,65 @@ async def websocket_stream(websocket: WebSocket):
                 audio_buffer = bytearray()
                 await websocket.send_json({"type": "status", "message": "Ready"})
             elif message.get("type") == "audio":
-                if not config_data: continue
+                if not config_data:
+                    continue
                 new_data = base64.b64decode(message.get("data", ""))
-                audio_buffer.extend(new_data)
+                # Save raw chunk and try explicit conversion to WAV before Whisper
+                temp_input = f"temp_stream_{datetime.now().timestamp()}.webm"
                 temp_wav = f"temp_stream_{datetime.now().timestamp()}.wav"
-                with open(temp_wav, "wb") as f: f.write(audio_buffer)
+                with open(temp_input, "wb") as f:
+                    f.write(new_data)
+
+                audio_for_whisper = temp_input
+                if AudioSegment is not None:
+                    try:
+                        segment = AudioSegment.from_file(temp_input)
+                        segment = segment.set_channels(1).set_frame_rate(16000).normalize()
+                        segment.export(temp_wav, format="wav")
+                        audio_for_whisper = temp_wav
+                    except Exception as pydub_convert_err:
+                        logger.warning(f"Audio chunk conversion failed ({temp_input}): {pydub_convert_err}")
+                        audio_for_whisper = temp_input
+
                 try:
                     start_time = asyncio.get_event_loop().time()
                     trans_start = asyncio.get_event_loop().time()
-                    trans = transcribe_with_whisper(temp_wav, config_data.get("source_language"))
+                    trans = transcribe_with_whisper(audio_for_whisper, config_data.get("source_language"))
                     trans_time = asyncio.get_event_loop().time() - trans_start
                     text = trans.get("text", "").strip()
                     confidence = trans.get("confidence", 0.5)
                     detected_lang = trans.get("language", config_data.get("source_language", "en"))
 
-                    if text and confidence >= getattr(config, 'AUDIO_MIN_CONFIDENCE', 0.3):
-                        await websocket.send_json({"type": "transcription", "text": text})
-                        translate_start = asyncio.get_event_loop().time()
-                        translated_data = await cached_translate(TranslationRequest(
-                            text=text,
-                            source_language=detected_lang,
-                            target_language=config_data.get("target_language", "es")
-                        ))
-                        translate_time = asyncio.get_event_loop().time() - translate_start
-                        translated = translated_data["translated"]
-                        await websocket.send_json({"type": "translation", "text": translated})
-                        
-                        if CoquiTTS and confidence >= 0.8:
-                            tts_start = asyncio.get_event_loop().time()
-                            audio_file = make_tts(translated)
-                            with open(audio_file, "rb") as f:
-                                audio_b64 = base64.b64encode(f.read()).decode("utf-8")
-                            await websocket.send_json({"type": "audio", "data": audio_b64})
-                            tts_time = asyncio.get_event_loop().time() - tts_start
-                            try: os.remove(audio_file)
-                            except: pass
+                    min_confidence = getattr(config, 'AUDIO_MIN_CONFIDENCE', 0.4)
+                    if text:
+                        # Always send interim transcription to show live updates
+                        await websocket.send_json({"type": "transcription", "text": text, "confidence": round(confidence, 2)})
+
+                        # Even on low confidence, continue with translation for conversational feel
+                        if confidence >= min_confidence or confidence >= 0.25:
+                            translate_start = asyncio.get_event_loop().time()
+                            translated_data = await cached_translate(TranslationRequest(
+                                text=text,
+                                source_language=detected_lang,
+                                target_language=config_data.get("target_language", "es")
+                            ))
+                            translate_time = asyncio.get_event_loop().time() - translate_start
+                            translated = translated_data.get("translated", "")
+                            await websocket.send_json({"type": "translation", "text": translated, "partial": True})
+
+                            if CoquiTTS and confidence >= 0.6:
+                                tts_start = asyncio.get_event_loop().time()
+                                audio_file = await asyncio.to_thread(make_tts, translated)
+                                try:
+                                    with open(audio_file, "rb") as f:
+                                        audio_b64 = base64.b64encode(f.read()).decode("utf-8")
+                                    await websocket.send_json({"type": "audio", "data": audio_b64})
+                                finally:
+                                    try:
+                                        os.remove(audio_file)
+                                    except:
+                                        pass
+                                tts_time = asyncio.get_event_loop().time() - tts_start
 
                         total_time = asyncio.get_event_loop().time() - start_time
                         await websocket.send_json({
@@ -490,11 +581,15 @@ async def websocket_stream(websocket: WebSocket):
                             "total_time": round(total_time, 2),
                             "confidence": round(confidence, 2)
                         })
-                    elif text:
-                        await websocket.send_json({"type": "status", "message": f"Low confidence ({confidence:.2f})"})
+                    else:
+                        await websocket.send_json({"type": "status", "message": f"No text detected yet (confidence {confidence:.2f})"})
                 finally:
-                    try: os.remove(temp_wav)
-                    except: pass
+                    for fpath in [temp_input, temp_wav]:
+                        try:
+                            if os.path.exists(fpath):
+                                os.remove(fpath)
+                        except:
+                            pass
     except Exception as e:
         logger.error(f"Stream error: {e}")
     finally:
